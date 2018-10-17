@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <launch>
+  <group ns="autogo/localization">
   <node pkg="bag_to_video" name="bag_to_video_node" type="bag_to_video_node" output="screen">
-    <param name="pub_rate" type="int" value="15" />
-    <param name="img_video_mode" type="int" value="1" />
+    <param name="update_hz" type="int" value="50" />
+    <param name="img_name_start" type="int" value="51" />
+    <param name="img_video_mode" type="int" value="2" />
     <param name="save_img_path" type="string" value="/config/image/"/>
     <param name="outfile_path" type="string" value="/config/odom.txt"/>
     <param name="sub_img_topic" type="string" value="/autogo/sensors/camera/front/left/image_rect_color"/>
     <param name="sub_odom_topic" type="string" value="/autogo/localization/pose"/>
-    <param name="video_save_path" type="string" value="/config/"/> 
+    <param name="save_video_path" type="string" value="/config/0.avi"/> 
+    <param name="video_read_path" type="string" value="/config/myvideo_640.avi"/> 
   </node>
+  </group>
 </launch>

@@ -11,13 +11,15 @@
 #include <fstream>
 
 ros::Publisher pub_topic;
-bool first_img = true;
+bool first_img, read_video_normal;
 long long last_img_time = 0;
-int img_num = 0;
+int img_num, img_name_start;
 cv::VideoWriter writer;
+cv::VideoCapture cap;
 std::string sub_img_topic, sub_odom_topic;
 std::string save_video_path, save_img_path, outfile_path;
-int PUB_RATE, img_video_mode;
+std::string video_read_path;
+int img_video_mode, update_hz;
 
 Eigen::Quaterniond car_world_q;
 Eigen::Vector3d car_world_t;
@@ -26,6 +28,7 @@ cv::Mat input_frame;
 std::ofstream outfile;
 
 void on_mouse(int event, int x, int y, int flags, void* userdata);
+void video_to_img();
 
 void imageCallback(const sensor_msgs::ImageConstPtr &img_msg)
 {
@@ -46,17 +49,21 @@ void imageCallback(const sensor_msgs::ImageConstPtr &img_msg)
 	      image_width = input_frame.cols;
 	      writer = cv::VideoWriter(save_video_path, CV_FOURCC('M', 'J', 'P', 'G'), 
 			      30, cv::Size(image_width, image_hight));
-	      first_img = true;
+	      first_img = false;
 	  }
 	  else
+	  {
 	      writer << input_frame;
+	      cv::imshow("src_img", input_frame);
+	      cv::waitKey(1);
+	  }
 	  break; 
       case 1:
-	      cv::imshow("src_img", input_frame);
-	      cv::setMouseCallback("src_img", on_mouse, 0);
-	      cv::waitKey(1);
+	  cv::imshow("src_img", input_frame);
+	  cv::setMouseCallback("src_img", on_mouse, 0);
+	  cv::waitKey(1);
 	  break;
-
+	  
       default : 
 	  throw std::string("error mode");
     }
@@ -82,28 +89,34 @@ void odomCallback(const nav_msgs::OdometryConstPtr &odom_msg)
 
 void get_ros_param(ros::NodeHandle &nh_param)
 {
-    if(!nh_param.getParam("pub_rate", PUB_RATE))  PUB_RATE = 20;
+    if(!nh_param.getParam("update_hz", update_hz))  update_hz = 50;
+    if(!nh_param.getParam("img_name_start", img_name_start))  img_name_start = 0;
     if(!nh_param.getParam("img_video_mode", img_video_mode))  img_video_mode = 1;
     if(!nh_param.getParam("sub_img_topic", sub_img_topic))  sub_img_topic = "/usb_cam/image_raw";
     if(!nh_param.getParam("sub_odom_topic", sub_odom_topic))  sub_odom_topic = "/autogo/localization/pose";
     if(!nh_param.getParam("save_img_path", save_img_path))  save_img_path = "/config/image/";
-    if(!nh_param.getParam("save_video_path", save_video_path))  save_video_path = "/config/";
+    if(!nh_param.getParam("save_video_path", save_video_path))  save_video_path = "/config/0.avi";
     if(!nh_param.getParam("outfile_path", outfile_path))  outfile_path = "/config/";
+    if(!nh_param.getParam("video_read_path", video_read_path))  video_read_path = "/config/0.avi";
     
     std::string pkg_path = ros::package::getPath("bag_to_video");
     save_img_path = pkg_path + save_img_path; 
     save_video_path = pkg_path + save_video_path;
     outfile_path = pkg_path + outfile_path;
+    video_read_path = pkg_path + video_read_path;
     
 //     outfile.open(outfile_path);
 //     if(!outfile.is_open())  throw std::string("cannot open the file: ") + outfile_path;
-    cv::namedWindow("src_img");
+//     cv::namedWindow("src_img");
     car_world_q.w() = 0;
     car_world_q.x() = 0;
     car_world_q.y() = 0;
     car_world_q.z() = 0;
     
     car_world_t << 0, 0, 0;
+    first_img = true;
+    read_video_normal = true;
+    img_num = img_name_start;
     
 }
 
@@ -116,16 +129,42 @@ int main(int argc, char **argv)
     ros::Subscriber sub_img = nh.subscribe(sub_img_topic, 100, imageCallback);
 //     ros::Subscriber sub_odom = nh.subscribe(sub_odom_topic, 100, odomCallback);
 
-    ros::Rate loop_rate(50);
+    ros::Rate loop_rate(update_hz);
   
     while (ros::ok())
     {
+	if (img_video_mode == 2 && read_video_normal) video_to_img();
         ros::spinOnce();
 	loop_rate.sleep();
     }
+    if (img_video_mode == 2) cap.release();
 //     outfile.close();
     return 0;
    
+}
+
+void video_to_img()
+{
+    if(first_img)
+    {
+	cap.open(video_read_path);
+	if (!cap.isOpened()) throw std::string("video cannot open");
+	first_img = false;
+    }
+    else
+    {
+	cv::Mat frame_tmp;
+	if(!cap.read(frame_tmp))
+        {
+	    read_video_normal = false;
+	    cv::destroyWindow("src_img");
+            return;  
+        }
+        input_frame = frame_tmp.clone();
+	cv::imshow("src_img", input_frame);
+	cv::setMouseCallback("src_img", on_mouse, 0);
+	cv::waitKey(1);
+    }
 }
 
 void on_mouse(int event, int x, int y, int flags, void* userdata) 
