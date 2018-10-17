@@ -1,9 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
 <launch>
   <node pkg="bag_to_video" name="bag_to_video_node" type="bag_to_video_node" output="screen">
     <param name="pub_rate" type="int" value="15" />
-    <param name="sub_img_topic" type="string" value="/hk_stereo_video/raw"/>
-    <param name="pub_img_topic" type="string" value="/bag_to_video/image_raw"/>
-    <param name="video_save_path" type="string" value="/home/administrator/files/video/"/>
-    <param name="video_read_path" type="string" value="/home/administrator/files/video/2018_11_15.avi"/>
+    <param name="img_video_mode" type="int" value="1" />
+    <param name="save_img_path" type="string" value="/config/image/"/>
+    <param name="outfile_path" type="string" value="/config/odom.txt"/>
+    <param name="sub_img_topic" type="string" value="/autogo/sensors/camera/front/left/image_rect_color"/>
+    <param name="sub_odom_topic" type="string" value="/autogo/localization/pose"/>
+    <param name="video_save_path" type="string" value="/config/"/> 
   </node>
 </launch>

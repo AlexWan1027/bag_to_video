@@ -1,106 +1,150 @@
 #include <ros/ros.h>
+#include <ros/package.h>
 #include <sensor_msgs/Image.h>
+#include <nav_msgs/Odometry.h>
 #include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
 #include <string>
+#include <eigen3/Eigen/Core>
+#include <eigen3/Eigen/Dense>
 
-#define PUB_VIDEO 0
-#define WRITER_IMG 0
-#define SHOW_INFORMATION 1
-#define WRITER_VIDEO 1
+#include <fstream>
 
 ros::Publisher pub_topic;
-bool pub_flag;
+bool first_img = true;
 long long last_img_time = 0;
 int img_num = 0;
 cv::VideoWriter writer;
-std::string SUB_IMG_TOPIC, PUB_IMG_TOPIC;
-std::string READ_PATH, SAVE_PATH;
-int PUB_RATE;
+std::string sub_img_topic, sub_odom_topic;
+std::string save_video_path, save_img_path, outfile_path;
+int PUB_RATE, img_video_mode;
+
+Eigen::Quaterniond car_world_q;
+Eigen::Vector3d car_world_t;
+
+cv::Mat input_frame;
+std::ofstream outfile;
+
+void on_mouse(int event, int x, int y, int flags, void* userdata);
 
 void imageCallback(const sensor_msgs::ImageConstPtr &img_msg)
 {
     long long dt, now_time;
-
+    std::cout << "fuck" << std::endl;
     cv_bridge::CvImageConstPtr ptr;
     ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::BGR8);
-    cv::Mat input_frame;
     input_frame = ptr->image;
-#if WRITER_VIDEO
-    if(img_num == 0)
+//     cv::resize(input_frame, input_frame, cv::Size(640, 480));
+    
+    switch(img_video_mode)
     {
-       int image_width, image_hight;
-       image_hight = input_frame.rows;
-       image_width = input_frame.cols;
-       SAVE_PATH  = SAVE_PATH + "myvideo.avi";
-       writer = cv::VideoWriter(SAVE_PATH, CV_FOURCC('M', 'J', 'P', 'G'), 
-				30, cv::Size(image_width, image_hight));
+      case 0:
+	  if(first_img)
+	  {
+	      int image_width, image_hight;
+	      image_hight = input_frame.rows;
+	      image_width = input_frame.cols;
+	      writer = cv::VideoWriter(save_video_path, CV_FOURCC('M', 'J', 'P', 'G'), 
+			      30, cv::Size(image_width, image_hight));
+	      first_img = true;
+	  }
+	  else
+	      writer << input_frame;
+	  break; 
+      case 1:
+	      cv::imshow("src_img", input_frame);
+	      cv::setMouseCallback("src_img", on_mouse, 0);
+	      cv::waitKey(1);
+	  break;
+
+      default : 
+	  throw std::string("error mode");
     }
-    else
-        writer << input_frame;
-#endif
     
-#if WRITER_IMG
-    std::string img_name = "/home/administrator/files/image/" +std::to_string(img_num)+".png"; 
-    cv::imwrite(img_name, input_frame);
-#endif
-    
-    img_num++;
-    
-#if SHOW_INFORMATION
-    cv::namedWindow("src_img", CV_WINDOW_NORMAL);
-    cv::imshow("src_img", input_frame);
-    cv::waitKey(1);
     now_time = ptr->header.stamp.toNSec();
     dt = now_time - last_img_time;
     std::cout << "last_img_time: " << last_img_time << std::endl;
     std::cout << "now_time: " << now_time << std::endl;
     std::cout << "dt: " << dt << std::endl;
     last_img_time = now_time;
-#endif
+}
 
+void odomCallback(const nav_msgs::OdometryConstPtr &odom_msg)
+{
+    car_world_q.w() = odom_msg->pose.pose.orientation.w;
+    car_world_q.x() = odom_msg->pose.pose.orientation.x;
+    car_world_q.y() = odom_msg->pose.pose.orientation.y;
+    car_world_q.z() = odom_msg->pose.pose.orientation.z;
+    
+    car_world_t << odom_msg->pose.pose.position.x, odom_msg->pose.pose.position.y, 
+		   odom_msg->pose.pose.position.z;
 }
 
 void get_ros_param(ros::NodeHandle &nh_param)
 {
     if(!nh_param.getParam("pub_rate", PUB_RATE))  PUB_RATE = 20;
-    if(!nh_param.getParam("sub_img_topic", SUB_IMG_TOPIC))  SUB_IMG_TOPIC = "/usb_cam/image_raw";
-    if(!nh_param.getParam("pub_img_topic", PUB_IMG_TOPIC))  PUB_IMG_TOPIC = "/bag_to_video/image_raw";
-    if(!nh_param.getParam("video_save_path", SAVE_PATH))  SAVE_PATH = "/home/administrator/files/video/";
-    if(!nh_param.getParam("video_read_path", READ_PATH))  READ_PATH = "/home/administrator/files/video/2018_11_15.avi";
+    if(!nh_param.getParam("img_video_mode", img_video_mode))  img_video_mode = 1;
+    if(!nh_param.getParam("sub_img_topic", sub_img_topic))  sub_img_topic = "/usb_cam/image_raw";
+    if(!nh_param.getParam("sub_odom_topic", sub_odom_topic))  sub_odom_topic = "/autogo/localization/pose";
+    if(!nh_param.getParam("save_img_path", save_img_path))  save_img_path = "/config/image/";
+    if(!nh_param.getParam("save_video_path", save_video_path))  save_video_path = "/config/";
+    if(!nh_param.getParam("outfile_path", outfile_path))  outfile_path = "/config/";
+    
+    std::string pkg_path = ros::package::getPath("bag_to_video");
+    save_img_path = pkg_path + save_img_path; 
+    save_video_path = pkg_path + save_video_path;
+    outfile_path = pkg_path + outfile_path;
+    
+//     outfile.open(outfile_path);
+//     if(!outfile.is_open())  throw std::string("cannot open the file: ") + outfile_path;
+    cv::namedWindow("src_img");
+    car_world_q.w() = 0;
+    car_world_q.x() = 0;
+    car_world_q.y() = 0;
+    car_world_q.z() = 0;
+    
+    car_world_t << 0, 0, 0;
+    
 }
 
 int main(int argc, char **argv)
 {
-    ros::init(argc, argv, "msckf_mono_node");
+    ros::init(argc, argv, "bag_to_video_node");
     ros::NodeHandle nh;
     ros::NodeHandle nh_param("~");
     get_ros_param(nh_param);
-    ros::Subscriber sub_img = nh.subscribe(SUB_IMG_TOPIC, 100, imageCallback);
-    pub_topic = nh.advertise<sensor_msgs::Image>(PUB_IMG_TOPIC, 1000);
-    
-#if PUB_VIDEO
-    cv::VideoCapture cap(READ_PATH);
-    if(!cap.isOpened())
-    {
-	std::cout << "cannot open video" << std::endl;
-	return -1;
-    }
-    cv::Mat frame;
-#endif
-    ros::Rate loop_rate(PUB_RATE);
+    ros::Subscriber sub_img = nh.subscribe(sub_img_topic, 100, imageCallback);
+//     ros::Subscriber sub_odom = nh.subscribe(sub_odom_topic, 100, odomCallback);
+
+    ros::Rate loop_rate(50);
   
     while (ros::ok())
     {
-#if PUB_VIDEO
-	sensor_msgs::ImagePtr msg_img;
-	cap >> frame;  
-	msg_img = cv_bridge::CvImage(std_msgs::Header(), "bgr8", frame).toImageMsg();
-	pub_topic.publish(msg_img);
-#endif
         ros::spinOnce();
 	loop_rate.sleep();
     }
+//     outfile.close();
     return 0;
    
+}
+
+void on_mouse(int event, int x, int y, int flags, void* userdata) 
+{ 
+	std::string save_img_path_tmp;
+	if (event == CV_EVENT_LBUTTONDOWN)
+	{  
+	    save_img_path_tmp = save_img_path + std::to_string(img_num) + ".jpg";
+	    cv::imwrite(save_img_path_tmp, input_frame);
+	    img_num++;
+	    cv::imshow("src_img ", input_frame);
+// 	    outfile << car_world_q.w() << " "; 
+// 	    outfile << car_world_q.x() << " "; 
+// 	    outfile << car_world_q.y() << " "; 
+// 	    outfile << car_world_q.z() << " "; 
+// 	    outfile << car_world_t(0) << " ";
+// 	    outfile << car_world_t(1) << " ";
+// 	    outfile << car_world_t(2);
+// 	    outfile << "\n";
+// 	    std::cout << "odom" << car_world_t << std::endl;
+	} 
 }

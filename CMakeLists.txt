@@ -7,8 +7,10 @@ SET(CMAKE_BUILD_TYPE Release)
 
 find_package(catkin REQUIRED COMPONENTS
   cv_bridge
+  roslib
   roscpp
   sensor_msgs
+  nav_msgs
   std_msgs
 )
 
